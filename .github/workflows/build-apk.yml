@@ -19,29 +19,105 @@ jobs:
         with:
           node-version: 20
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
       - name: Install Capacitor
         run: |
           npm init -y
-          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
 
       - name: Create Capacitor config
         run: |
-          cat > capacitor.config.ts <<'EOF'
-          import type { CapacitorConfig } from '@capacitor/cli';
-
-          const config: CapacitorConfig = {
-            appId: 'com.kisankafriend.app',
-            appName: 'Kisan Ka Friend',
-            webDir: '.',
-          };
-
-          export default config;
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.kisankafriend.app",
+            "appName": "Kisan Ka Friend",
+            "webDir": "."
+          }
           EOF
 
       - name: Add Android
         run: npx cap add android
 
-      - name: Copy web files
+      - name: Install ImageMagick
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
+      - name: Prepare App Icon
+        shell: bash
+        run: |
+          set -e
+
+          ICON=$(find . -maxdepth 1 -type f \( \
+            -iname "*.png" -o \
+            -iname "*.jpg" -o \
+            -iname "*.jpeg" -o \
+            -iname "*.webp" \
+          \) | head -n 1)
+
+          if [ -z "$ICON" ]; then
+            echo "No image found for app icon."
+            exit 1
+          fi
+
+          echo "Using image as app icon: $ICON"
+
+          mkdir -p icon-source
+
+          magick "$ICON" \
+            -auto-orient \
+            -resize "1024x1024^" \
+            -gravity center \
+            -extent 1024x1024 \
+            icon-source/icon.png
+
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          rm -rf android/app/src/main/res/mipmap-anydpi
+
+          mkdir -p android/app/src/main/res/mipmap-mdpi
+          mkdir -p android/app/src/main/res/mipmap-hdpi
+          mkdir -p android/app/src/main/res/mipmap-xhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+
+          magick icon-source/icon.png -resize 48x48 \
+            android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+
+          magick icon-source/icon.png -resize 72x72 \
+            android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+
+          magick icon-source/icon.png -resize 96x96 \
+            android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+
+          magick icon-source/icon.png -resize 144x144 \
+            android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+
+          magick icon-source/icon.png -resize 192x192 \
+            android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
+          cp android/app/src/main/res/mipmap-mdpi/ic_launcher.png \
+            android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+
+          cp android/app/src/main/res/mipmap-hdpi/ic_launcher.png \
+            android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+
+          cp android/app/src/main/res/mipmap-xhdpi/ic_launcher.png \
+            android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+
+          cp android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png \
+            android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+
+          cp android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png \
+            android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+
+          echo "App icon prepared successfully."
+
+      - name: Copy Web Files
         run: npx cap copy android
 
       - name: Build APK
@@ -53,4 +129,3 @@ jobs:
         with:
           name: Kisan-Ka-Friend-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          
