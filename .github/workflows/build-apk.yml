@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -25,26 +26,29 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Create Web Folder
+        run: |
+          set -e
+
+          mkdir -p www
+
+          test -f index.html
+          test -f style.css
+          test -f script.js
+
+          cp index.html www/index.html
+          cp style.css www/style.css
+          cp script.js www/script.js
+
+          echo "Web files copied successfully:"
+          ls -la www
+
       - name: Install Capacitor
         run: |
           npm init -y
           npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
 
-      - name: Create Web Folder
-        run: |
-          mkdir -p www
-
-          cp index.html www/
-
-          if [ -f style.css ]; then
-            cp style.css www/
-          fi
-
-          if [ -f script.js ]; then
-            cp script.js www/
-          fi
-
-      - name: Create Capacitor config
+      - name: Create Capacitor Config
         run: |
           cat > capacitor.config.json <<'EOF'
           {
@@ -55,7 +59,8 @@ jobs:
           EOF
 
       - name: Add Android
-        run: npx cap add android
+        run: |
+          npx cap add android
 
       - name: Install ImageMagick
         run: |
@@ -64,6 +69,8 @@ jobs:
 
       - name: Prepare App Icon
         run: |
+          set -e
+
           ICON=$(find . -maxdepth 1 -type f \( \
             -iname "*.png" -o \
             -iname "*.jpg" -o \
@@ -72,7 +79,16 @@ jobs:
           \) | head -n 1)
 
           if [ -n "$ICON" ]; then
+
             echo "Using icon: $ICON"
+
+            mkdir -p android/app/src/main/res/drawable
+
+            magick "$ICON" \
+              -resize "1024x1024^" \
+              -gravity center \
+              -extent 1024x1024 \
+              android/app/src/main/res/drawable/app_icon.png
 
             mkdir -p android/app/src/main/res/mipmap-mdpi
             mkdir -p android/app/src/main/res/mipmap-hdpi
@@ -80,63 +96,56 @@ jobs:
             mkdir -p android/app/src/main/res/mipmap-xxhdpi
             mkdir -p android/app/src/main/res/mipmap-xxxhdpi
 
-            magick "$ICON" \
-              -resize "1024x1024^" \
-              -gravity center \
-              -extent 1024x1024 \
-              /tmp/app_icon.png
-
-            magick /tmp/app_icon.png \
+            magick android/app/src/main/res/drawable/app_icon.png \
               -resize 48x48 \
               android/app/src/main/res/mipmap-mdpi/ic_launcher.png
 
-            magick /tmp/app_icon.png \
+            magick android/app/src/main/res/drawable/app_icon.png \
               -resize 72x72 \
               android/app/src/main/res/mipmap-hdpi/ic_launcher.png
 
-            magick /tmp/app_icon.png \
+            magick android/app/src/main/res/drawable/app_icon.png \
               -resize 96x96 \
               android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
 
-            magick /tmp/app_icon.png \
+            magick android/app/src/main/res/drawable/app_icon.png \
               -resize 144x144 \
               android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
 
-            magick /tmp/app_icon.png \
+            magick android/app/src/main/res/drawable/app_icon.png \
               -resize 192x192 \
               android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
 
-            cp android/app/src/main/res/mipmap-mdpi/ic_launcher.png \
-              android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
-
-            cp android/app/src/main/res/mipmap-hdpi/ic_launcher.png \
-              android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
-
-            cp android/app/src/main/res/mipmap-xhdpi/ic_launcher.png \
-              android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
-
-            cp android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png \
-              android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
-
-            cp android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png \
-              android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
-
           else
-            echo "No image found for app icon."
+
+            echo "No custom icon found."
+            echo "Using default Capacitor Android icon."
+
           fi
 
       - name: Copy Web Files
         run: |
+          set -e
+
+          test -f www/index.html
+          test -f www/style.css
+          test -f www/script.js
+
           npx cap copy android
 
-      - name: Build APK
-        working-directory: android
+      - name: Sync Capacitor
         run: |
+          npx cap sync android
+
+      - name: Build APK
+        run: |
+          cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Kisan-Ka-Friend-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
